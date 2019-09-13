@@ -102,3 +102,28 @@ finBladMenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
 finLungWomenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
 finLungMenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
 
+## Denmark population
+denPop <- fread(file.path(base, "Denmark population.csv"))
+denPop[, ageLow := as.numeric(sub("^([0-9]{1,3})[^0-9]+.*", "\\1", Age))]
+denPopYoung <- denPop[ageLow %in% c(0, 1), list(Age = "0-4", ageLow = 0,
+  Female = sum(Female), Male = sum(Male), Total = sum(Total)), by = Year]
+denPopOld <- denPop[ageLow >= 85, list(Age = "85plus", ageLow = 85,
+  Female = sum(Female), Male = sum(Male), Total = sum(Total)), by = Year]
+denPop2 <- rbind(denPopYoung, denPop[!ageLow %in% c(0, 1) & !ageLow >= 85], denPopOld)
+## Melt to long format
+mDenPop <- melt(denPop2[Year >= 1953], id.vars = c("Year", "Age"),
+  measure.vars = c("Female", "Male"), value.name = "pop")
+mDenPop[, Sex := ifelse(grepl("Male", variable), "men", "women")]
+## For some reason, 1921 is sometimes 1921+
+mDenPop[grepl("\\+", Year), Year := sub("([0-9]{4})\\+", "\\1", Year)]
+mDenPop[, Year := as.numeric(Year)]
+## Calculate mid year of 5-year cohort based on calendar year and age group
+mDenPop[, meanAge := as.numeric(sub("^([0-9]{1,2})[-p].+", "\\1", Age)) + 3]
+mDenPop[, cohMid := Year - meanAge]
+mDenPop[, cohMid1925 := relevel(factor(cohMid), ref = "1925")]
+
+## Create 5-year cohorts and 5-year periods add up incidence data
+mDenPop[, period5 := cut(Year, seq(min(Year), max(Year), by = 5), right = FALSE)]
+mDenPop[, cohort5 := cut(cohMid, seq(min(cohMid), max(cohMid), by = 5),
+  right = FALSE)]
+mDenPop[, cohort5_1925 := relevel(cohort5, ref = "[1925,1930)")]
