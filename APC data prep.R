@@ -8,18 +8,20 @@ if(!exists("base", envir = .GlobalEnv)) {
   base <- "/Users/benbarnes2/Documents/DGEpi/Modelling Workshop/Workshop APC/R code and data"
 }
 
-theAges <- c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39",
-  "40-44", "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85plus")
-theSexes <- c("men", "women")
-theDiagnoses <- c(Lung = 180, Bladder = 300, Prostate = 261)
 
 ## Finnish lung cancer data among women:
-getFinData <- function(diagnosis, sex) {
+getIncData <- function(diagnosis, sex, registry) {
+  theAges <- c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39",
+    "40-44", "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85plus")
+  theSexes <- c("men", "women")
+  theDiagnoses <- c(Lung = 180, Bladder = 300, Prostate = 261)
+  theRegs <- c(Finland = 246, Denmark = 208)
+  theReg <- theRegs[match(registry, names(theRegs))]
   theDiag <- theDiagnoses[match(diagnosis, names(theDiagnoses))]
   res <- lapply(seq_len(18), function(theAge) {# browser()
     theURL <- sprintf(
-      "http://www-dep.iarc.fr/NORDCAN/english/Table1.asp?cancer=%i&registry=246&sYear=1953&eYear=2016&sex=%i&type=0&age_from=%i&age_to=%i&submit=Execute",
-      theDiag, sex, theAge, theAge)
+      "http://www-dep.iarc.fr/NORDCAN/english/Table1.asp?cancer=%i&registry=%i&sYear=1953&eYear=2016&sex=%i&type=0&age_from=%i&age_to=%i&submit=Execute",
+      theDiag, theReg, sex, theAge, theAge)
     theTabs <- getNodeSet(htmlParse(theURL), "//table")
     resTab <- readHTMLTable(theTabs[[2]], stringsAsFactors = FALSE)
     setDT(resTab)
@@ -34,9 +36,9 @@ getFinData <- function(diagnosis, sex) {
 }
 
 ## Read in Finnish cancer data
-lungIncWomen <- getFinData(diagnosis = "Lung", sex = 2)
-bladIncMen <- getFinData(diagnosis = "Bladder", sex = 1)
-lungIncMen <- getFinData(diagnosis = "Lung", sex = 1)
+lungIncWomen <- getIncData(diagnosis = "Lung", sex = 2, registry = "Finland")
+bladIncMen <- getIncData(diagnosis = "Bladder", sex = 1, registry = "Finland")
+lungIncMen <- getIncData(diagnosis = "Lung", sex = 1, registry = "Finland")
 
 ## Read in Finnish male population data
 finPop <- fread(file.path(base, "Finland population.csv"), skip = 2)
@@ -70,22 +72,33 @@ finBladPopMen[, newCrudeRate := Numbers / pop * 1e5]
 finLungPopWomen <- merge(mFinPop, lungIncWomen, by.x = c("Year", "Sex", "ageGroup"),
   by.y = c("Year", "Sex", "ageGroup"))
 
+finLungPopMen <- merge(mFinPop, lungIncMen, by.x = c("Year", "Sex", "ageGroup"),
+  by.y = c("Year", "Sex", "ageGroup"))
+
+
 finBladMenAPC <- finBladPopMen[!is.na(period5), list(cases = sum(Numbers), pop = sum(pop),
   perBeg = min(Year), cohMid = max(cohMid)),
   keyby = list(ageGroup, meanAge, period5, cohort5)]
 finLungWomenAPC <- finLungPopWomen[!is.na(period5), list(cases = sum(Numbers), pop = sum(pop),
   perBeg = min(Year), cohMid = max(cohMid)),
   keyby = list(ageGroup, meanAge, period5, cohort5)]
+finLungMenAPC <- finLungPopMen[!is.na(period5), list(cases = sum(Numbers), pop = sum(pop),
+  perBeg = min(Year), cohMid = max(cohMid)),
+  keyby = list(ageGroup, meanAge, period5, cohort5)]
 ## Re-calculate age-specific rates
 finBladMenAPC[, newCrudeRate := cases / pop * 1e5]
 finLungWomenAPC[, newCrudeRate := cases / pop * 1e5]
+finLungMenAPC[, newCrudeRate := cases / pop * 1e5]
 ## set reference level of cohorts to cohort ending in 1928
 finBladMenAPC[, cohMid1925 := relevel(factor(cohort5), ref = "[1925,1930)")]
 finLungWomenAPC[, cohMid1925 := relevel(factor(cohort5), ref = "[1925,1930)")]
+finLungMenAPC[, cohMid1925 := relevel(factor(cohort5), ref = "[1925,1930)")]
 
 ## Variables required for apc.fit function
 finBladPopMen[, c("A", "P", "D", "Y") := list(meanAge, Year, Numbers, pop)]
 finLungPopWomen[, c("A", "P", "D", "Y") := list(meanAge, Year, Numbers, pop)]
+finLungPopMen[, c("A", "P", "D", "Y") := list(meanAge, Year, Numbers, pop)]
 finBladMenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
 finLungWomenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
+finLungMenAPC[, c("A", "P", "D", "Y") := list(meanAge, perBeg + 3, cases, pop)]
 
